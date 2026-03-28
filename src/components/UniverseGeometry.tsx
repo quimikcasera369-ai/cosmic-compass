@@ -144,9 +144,9 @@ function GreatCircle({ axis }: { axis: "x" | "y" | "z" }) {
   };
 
   return (
-    <line geometry={geo}>
+    <line_ geometry={geo}>
       <lineBasicMaterial color={colors[axis]} transparent opacity={0.6} />
-    </line>
+    </line_>
   );
 }
 
