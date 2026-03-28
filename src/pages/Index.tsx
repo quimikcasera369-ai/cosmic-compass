@@ -106,6 +106,23 @@ const Index = () => {
           </div>
         </NarrativeSection>
 
+        {/* Universe Geometry */}
+        <NarrativeSection
+          id="geometry"
+          badge="Geometry"
+          badgeColor="purple"
+          title={
+            <>
+              <span className="text-foreground">Flat vs </span>
+              <span className="gradient-text-purple">closed</span>
+              <span className="text-foreground"> universe</span>
+            </>
+          }
+          description="The shape of the universe changes everything. In a closed 3-sphere, vacuum fluctuations can't escape — they create coherent gravitational effects that emerge as the extra gravity we observe."
+        >
+          <UniverseGeometry />
+        </NarrativeSection>
+
         {/* 4. Acceleration Explorer */}
         <NarrativeSection
           id="regimes"
