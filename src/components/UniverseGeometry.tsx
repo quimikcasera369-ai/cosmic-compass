@@ -40,12 +40,12 @@ function FlatGrid({ visible }: { visible: boolean }) {
         new THREE.Vector3(size, 0, pos),
       ]);
       lines.push(
-        <line key={`x-${i}`} geometry={xGeo}>
+        <line_ key={`x-${i}`} geometry={xGeo}>
           <lineBasicMaterial color={color} transparent opacity={0.35} />
-        </line>,
-        <line key={`z-${i}`} geometry={zGeo}>
+        </line_>,
+        <line_ key={`z-${i}`} geometry={zGeo}>
           <lineBasicMaterial color={color} transparent opacity={0.35} />
-        </line>
+        </line_>
       );
     }
     return lines;
