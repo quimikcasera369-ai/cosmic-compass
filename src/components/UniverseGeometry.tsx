@@ -1,8 +1,17 @@
 import { useState, useRef, useMemo } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Text } from "@react-three/drei";
+import { Canvas, useFrame, extend, Object3DNode } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { motion } from "framer-motion";
+
+// Register Three.js Line_ to avoid conflict with SVG <line>
+extend({ Line_: THREE.Line });
+
+declare module "@react-three/fiber" {
+  interface ThreeElements {
+    line_: Object3DNode<THREE.Line, typeof THREE.Line>;
+  }
+}
 
 /* ─── Flat Grid ─── */
 function FlatGrid({ visible }: { visible: boolean }) {
