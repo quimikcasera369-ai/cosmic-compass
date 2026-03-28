@@ -5,6 +5,7 @@ import GalaxySimulator from "@/components/GalaxySimulator";
 import AccelerationExplorer from "@/components/AccelerationExplorer";
 import CriticalAcceleration from "@/components/CriticalAcceleration";
 import PredictionsExplorer from "@/components/PredictionsExplorer";
+import UniverseGeometry from "@/components/UniverseGeometry";
 import ConceptCard from "@/components/ConceptCard";
 import { motion } from "framer-motion";
 import { Orbit, Waves, Globe2, Sparkles, FlaskConical, Telescope } from "lucide-react";
