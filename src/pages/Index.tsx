@@ -198,8 +198,9 @@ const Index = () => {
         </section>
 
         {/* Footer */}
-        <footer className="border-t border-border py-8 px-6 text-center text-xs text-muted-foreground">
-          An interactive exploration of emergent gravity · Built for curiosity
+        <footer className="border-t border-border py-8 px-6 text-center text-xs text-muted-foreground space-y-1">
+          <p>An interactive exploration of emergent gravity · Built for curiosity</p>
+          <p className="gradient-text-cyan">By Juan Pablo Figueroa Torres</p>
         </footer>
       </div>
     </div>
