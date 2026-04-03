@@ -1,10 +1,10 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { Canvas, useFrame, extend, Object3DNode } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { motion } from "framer-motion";
+import { KField3D, KFieldParticle, stepParticles3D, depositMass3D, FIELD_CONSTANTS } from "@/lib/kfield-physics";
 
-// Register Three.js Line_ to avoid conflict with SVG <line>
 extend({ Line_: THREE.Line });
 
 declare module "@react-three/fiber" {
@@ -13,12 +13,140 @@ declare module "@react-three/fiber" {
   }
 }
 
-/* ─── Flat Grid ─── */
+// ─── K-Field driven particle system ───
+function KFieldParticles({
+  mode,
+  centralMass,
+}: {
+  mode: "flat" | "closed";
+  centralMass: number;
+}) {
+  const pointsRef = useRef<THREE.Points>(null);
+  const GRID_N = 16; // Keep small for performance
+  const GRID_SIZE = 8;
+  const NUM_PARTICLES = 200;
+  const DT = 0.01;
+
+  const simRef = useRef<{
+    field: KField3D;
+    particles: KFieldParticle[];
+  } | null>(null);
+
+  // Initialize simulation
+  useMemo(() => {
+    const periodic = mode === "closed";
+    const field = new KField3D(GRID_N, GRID_SIZE, periodic, {
+      ...FIELD_CONSTANTS,
+      c: periodic ? 1.2 : 0.3,
+      mu2: periodic ? 1.5 : 0.2,
+      H0: periodic ? 0.08 : 0.02,
+    });
+
+    const particles: KFieldParticle[] = [];
+    for (let i = 0; i < NUM_PARTICLES; i++) {
+      if (periodic) {
+        // Distribute on sphere surface
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const r = 2.5 + (Math.random() - 0.5) * 0.5;
+        particles.push({
+          x: r * Math.sin(phi) * Math.cos(theta),
+          y: r * Math.sin(phi) * Math.sin(theta),
+          z: r * Math.cos(phi),
+          vx: (Math.random() - 0.5) * 0.1,
+          vy: (Math.random() - 0.5) * 0.1,
+          vz: (Math.random() - 0.5) * 0.1,
+          mass: 0.01,
+        });
+      } else {
+        // Flat distribution
+        particles.push({
+          x: (Math.random() - 0.5) * 7,
+          y: (Math.random() - 0.5) * 0.3,
+          z: (Math.random() - 0.5) * 7,
+          vx: (Math.random() - 0.5) * 0.05,
+          vy: 0,
+          vz: (Math.random() - 0.5) * 0.05,
+          mass: 0.01,
+        });
+      }
+    }
+
+    // Pre-evolve field
+    const density = depositMass3D(particles, field, centralMass);
+    for (let i = 0; i < 50; i++) {
+      field.step(DT, density);
+    }
+
+    simRef.current = { field, particles };
+  }, [mode, centralMass]);
+
+  // Positions buffer
+  const positions = useMemo(() => new Float32Array(NUM_PARTICLES * 3), []);
+
+  useFrame(() => {
+    const sim = simRef.current;
+    if (!sim || !pointsRef.current) return;
+
+    // Physics step
+    const density = depositMass3D(sim.particles, sim.field, centralMass);
+    sim.field.step(DT, density);
+    stepParticles3D(sim.particles, sim.field, DT, FIELD_CONSTANTS.beta * 0.5);
+
+    // Boundary: clamp particles
+    const limit = GRID_SIZE * 0.45;
+    for (const p of sim.particles) {
+      const r = Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
+      if (r > limit) {
+        const s = limit / r;
+        p.x *= s; p.y *= s; p.z *= s;
+        // Reflect velocity inward
+        const dot = (p.vx * p.x + p.vy * p.y + p.vz * p.z) / (r * r);
+        if (dot > 0) {
+          p.vx -= 2 * dot * p.x;
+          p.vy -= 2 * dot * p.y;
+          p.vz -= 2 * dot * p.z;
+        }
+      }
+      // Damping for stability
+      p.vx *= 0.999;
+      p.vy *= 0.999;
+      p.vz *= 0.999;
+    }
+
+    // Update buffer
+    for (let i = 0; i < sim.particles.length; i++) {
+      positions[i * 3] = sim.particles[i].x;
+      positions[i * 3 + 1] = sim.particles[i].y;
+      positions[i * 3 + 2] = sim.particles[i].z;
+    }
+
+    const attr = pointsRef.current.geometry.getAttribute("position") as THREE.BufferAttribute;
+    attr.needsUpdate = true;
+  });
+
+  return (
+    <points ref={pointsRef}>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          args={[positions, 3]}
+          count={NUM_PARTICLES}
+        />
+      </bufferGeometry>
+      <pointsMaterial
+        size={0.06}
+        color={mode === "closed" ? "hsl(270, 70%, 70%)" : "hsl(187, 80%, 65%)"}
+        transparent
+        opacity={0.8}
+      />
+    </points>
+  );
+}
+
+/* ─── Visual scaffolding (grid / sphere wireframe) ─── */
 function FlatGrid({ visible }: { visible: boolean }) {
   const ref = useRef<THREE.Group>(null);
-  useFrame((_, dt) => {
-    if (ref.current) ref.current.rotation.y += dt * 0.08;
-  });
 
   const gridLines = useMemo(() => {
     const lines: JSX.Element[] = [];
@@ -29,12 +157,10 @@ function FlatGrid({ visible }: { visible: boolean }) {
 
     for (let i = 0; i <= divisions; i++) {
       const pos = -size + i * step;
-      // X lines
       const xGeo = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(pos, 0, -size),
         new THREE.Vector3(pos, 0, size),
       ]);
-      // Z lines
       const zGeo = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(-size, 0, pos),
         new THREE.Vector3(size, 0, pos),
@@ -52,50 +178,13 @@ function FlatGrid({ visible }: { visible: boolean }) {
   }, []);
 
   if (!visible) return null;
-
-  return (
-    <group ref={ref}>
-      {gridLines}
-      {/* Particles on flat surface */}
-      <FlatParticles />
-    </group>
-  );
+  return <group ref={ref}>{gridLines}</group>;
 }
 
-function FlatParticles() {
-  const ref = useRef<THREE.Points>(null);
-  const count = 200;
-  const positions = useMemo(() => {
-    const arr = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      arr[i * 3] = (Math.random() - 0.5) * 7;
-      arr[i * 3 + 1] = (Math.random() - 0.5) * 0.15;
-      arr[i * 3 + 2] = (Math.random() - 0.5) * 7;
-    }
-    return arr;
-  }, []);
-
-  useFrame((_, dt) => {
-    if (ref.current) ref.current.rotation.y += dt * 0.08;
-  });
-
-  return (
-    <points ref={ref}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-      </bufferGeometry>
-      <pointsMaterial size={0.06} color="hsl(45, 90%, 65%)" transparent opacity={0.8} />
-    </points>
-  );
-}
-
-/* ─── Closed S³ Sphere ─── */
 function ClosedSphere({ visible }: { visible: boolean }) {
-  const ref = useRef<THREE.Group>(null);
   const wireRef = useRef<THREE.Mesh>(null);
 
-  useFrame((state, dt) => {
-    if (ref.current) ref.current.rotation.y += dt * 0.15;
+  useFrame((state) => {
     if (wireRef.current) {
       wireRef.current.scale.setScalar(1 + Math.sin(state.clock.elapsedTime * 0.5) * 0.03);
     }
@@ -104,75 +193,16 @@ function ClosedSphere({ visible }: { visible: boolean }) {
   if (!visible) return null;
 
   return (
-    <group ref={ref}>
-      {/* Main wireframe sphere */}
+    <group>
       <mesh ref={wireRef}>
         <sphereGeometry args={[2.5, 32, 32]} />
-        <meshBasicMaterial color="hsl(270, 70%, 60%)" wireframe transparent opacity={0.25} />
+        <meshBasicMaterial color="hsl(270, 70%, 60%)" wireframe transparent opacity={0.2} />
       </mesh>
-      {/* Inner glow */}
       <mesh>
         <sphereGeometry args={[2.4, 32, 32]} />
-        <meshBasicMaterial color="hsl(270, 60%, 40%)" transparent opacity={0.08} />
+        <meshBasicMaterial color="hsl(270, 60%, 40%)" transparent opacity={0.06} />
       </mesh>
-      {/* Great circles to show S³ structure */}
-      <GreatCircle axis="x" />
-      <GreatCircle axis="y" />
-      <GreatCircle axis="z" />
-      {/* Particles on sphere surface */}
-      <SphereParticles />
     </group>
-  );
-}
-
-function GreatCircle({ axis }: { axis: "x" | "y" | "z" }) {
-  const geo = useMemo(() => {
-    const points: THREE.Vector3[] = [];
-    for (let i = 0; i <= 128; i++) {
-      const t = (i / 128) * Math.PI * 2;
-      if (axis === "x") points.push(new THREE.Vector3(0, Math.cos(t) * 2.5, Math.sin(t) * 2.5));
-      if (axis === "y") points.push(new THREE.Vector3(Math.cos(t) * 2.5, 0, Math.sin(t) * 2.5));
-      if (axis === "z") points.push(new THREE.Vector3(Math.cos(t) * 2.5, Math.sin(t) * 2.5, 0));
-    }
-    return new THREE.BufferGeometry().setFromPoints(points);
-  }, [axis]);
-
-  const colors: Record<string, string> = {
-    x: "hsl(187, 80%, 55%)",
-    y: "hsl(270, 70%, 60%)",
-    z: "hsl(45, 90%, 65%)",
-  };
-
-  return (
-    <line_ geometry={geo}>
-      <lineBasicMaterial color={colors[axis]} transparent opacity={0.6} />
-    </line_>
-  );
-}
-
-function SphereParticles() {
-  const ref = useRef<THREE.Points>(null);
-  const count = 300;
-  const positions = useMemo(() => {
-    const arr = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      const r = 2.5;
-      arr[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      arr[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      arr[i * 3 + 2] = r * Math.cos(phi);
-    }
-    return arr;
-  }, []);
-
-  return (
-    <points ref={ref}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-      </bufferGeometry>
-      <pointsMaterial size={0.05} color="hsl(45, 90%, 65%)" transparent opacity={0.7} />
-    </points>
   );
 }
 
@@ -182,7 +212,6 @@ const UniverseGeometry = () => {
 
   return (
     <div className="space-y-6">
-      {/* Toggle */}
       <div className="flex justify-center gap-3">
         <button
           onClick={() => setMode("flat")}
@@ -206,7 +235,6 @@ const UniverseGeometry = () => {
         </button>
       </div>
 
-      {/* 3D Canvas */}
       <motion.div
         className="rounded-xl border border-border bg-card/20 backdrop-blur-sm overflow-hidden"
         style={{ height: 400 }}
@@ -218,11 +246,11 @@ const UniverseGeometry = () => {
           <ambientLight intensity={0.3} />
           <FlatGrid visible={mode === "flat"} />
           <ClosedSphere visible={mode === "closed"} />
-          <OrbitControls enableZoom={false} enablePan={false} autoRotate={false} />
+          <KFieldParticles mode={mode} centralMass={5} />
+          <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.5} />
         </Canvas>
       </motion.div>
 
-      {/* Description */}
       <motion.div
         key={mode}
         initial={{ opacity: 0, y: 10 }}
@@ -232,19 +260,18 @@ const UniverseGeometry = () => {
       >
         {mode === "flat" ? (
           <>
-            <h4 className="text-sm font-bold gradient-text-cyan mb-2">Flat Euclidean Space</h4>
+            <h4 className="text-sm font-bold gradient-text-cyan mb-2">Flat K-Field</h4>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              In flat space, parallel lines never meet and gravity weakens indefinitely with distance.
-              Particles can escape to infinity — there's no natural boundary or coherence scale.
+              In flat space, the K-field weakens with distance (μ² restoring is weak).
+              Particles disperse — no emergent coherence. Force F = −β∇K vanishes at large r.
             </p>
           </>
         ) : (
           <>
-            <h4 className="text-sm font-bold gradient-text-purple mb-2">Closed S³ Geometry</h4>
+            <h4 className="text-sm font-bold gradient-text-purple mb-2">Closed S³ K-Field</h4>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              In a closed 3-sphere, space wraps back on itself. Vacuum fluctuations can't escape —
-              they reinforce, creating a coherent gravitational background. This is the origin of the
-              emergent regime and the critical acceleration g<sub>crit</sub>.
+              In closed geometry, periodic boundaries create standing K-field modes.
+              Vacuum fluctuations reinforce → coherent ∇K emerges → g<sub>crit</sub> appears naturally.
             </p>
           </>
         )}
