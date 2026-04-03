@@ -41,10 +41,11 @@ const GalaxySimulator = () => {
         const rMeters = (t * 30 + 1) * KPC;
 
         // Calculate orbital velocity
+        const gAcc = (G * M) / (rMeters * rMeters);
         const vNewton = Math.sqrt((G * M) / rMeters);
         const vEmergent = Math.pow(G * M * G_CRIT, 0.25);
         const vActual = showEmergent
-          ? Math.sqrt(vNewton ** 2 + vEmergent ** 2) // smooth blend
+          ? (gAcc > G_CRIT ? vNewton : vEmergent)
           : vNewton;
 
         // Angular velocity for animation
