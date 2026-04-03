@@ -1,24 +1,84 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-
-const G = 6.674e-11;
-const G_CRIT = 9.58e-12; // m/s²
-const SOLAR_MASS = 1.989e30;
-const KPC = 3.086e19; // meters
+import {
+  RadialKField,
+  KFieldParticle,
+  stepParticlesRadial,
+  depositMassRadial,
+  FIELD_CONSTANTS,
+} from "@/lib/kfield-physics";
 
 const GalaxySimulator = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const graphRef = useRef<HTMLCanvasElement>(null);
-  const [mass, setMass] = useState(50); // in 10^9 solar masses
+  const [mass, setMass] = useState(50);
   const [showEmergent, setShowEmergent] = useState(true);
   const animRef = useRef<number>(0);
 
-  const drawGalaxy = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number, time: number) => {
+  // Simulation state persisted across renders via ref
+  const simRef = useRef<{
+    field: RadialKField;
+    particles: KFieldParticle[];
+    initialized: boolean;
+  }>({ field: null!, particles: [], initialized: false });
+
+  const GRID_N = 128;
+  const R_MAX = 20; // simulation units
+  const NUM_STARS = 200;
+  const DT = 0.008;
+
+  const initSim = useCallback(() => {
+    const params = showEmergent
+      ? { ...FIELD_CONSTANTS }
+      : { ...FIELD_CONSTANTS, alpha: 0, mu2: 0, c: 0, H0: 0 }; // pure Newtonian-like: no field dynamics
+
+    const field = new RadialKField(GRID_N, R_MAX, params);
+    const particles: KFieldParticle[] = [];
+
+    // Create stars in spiral arms
+    const arms = 2;
+    const starsPerArm = NUM_STARS / arms;
+    for (let arm = 0; arm < arms; arm++) {
+      const armOffset = (arm * Math.PI * 2) / arms;
+      for (let i = 0; i < starsPerArm; i++) {
+        const t = (i + 1) / starsPerArm;
+        const r = 1 + t * (R_MAX * 0.8);
+        const angle = armOffset + t * 3 + (Math.random() - 0.5) * 0.3;
+
+        // Initial circular velocity estimate
+        const v0 = Math.sqrt(mass * 0.5 / (r + 0.1));
+        particles.push({
+          x: Math.cos(angle) * r,
+          y: Math.sin(angle) * r,
+          z: 0,
+          vx: -Math.sin(angle) * v0,
+          vy: Math.cos(angle) * v0,
+          vz: 0,
+          mass: 0.001,
+        });
+      }
+    }
+
+    // Seed the field with mass to create initial gradient
+    const density = depositMassRadial(particles, mass, field);
+    // Pre-evolve field to quasi-equilibrium
+    for (let i = 0; i < 200; i++) {
+      field.step(DT, density);
+    }
+
+    simRef.current = { field, particles, initialized: true };
+  }, [mass, showEmergent]);
+
+  const drawGalaxy = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number) => {
+    const sim = simRef.current;
+    if (!sim.initialized) return;
+
     ctx.clearRect(0, 0, w, h);
     const cx = w / 2;
     const cy = h / 2;
+    const scale = Math.min(w, h) / (R_MAX * 2.2);
 
-    // Galaxy core glow
+    // Core glow
     const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 60);
     coreGrad.addColorStop(0, "hsla(45, 90%, 70%, 0.8)");
     coreGrad.addColorStop(0.3, "hsla(45, 80%, 55%, 0.3)");
@@ -28,56 +88,32 @@ const GalaxySimulator = () => {
     ctx.arc(cx, cy, 60, 0, Math.PI * 2);
     ctx.fill();
 
-    // Spiral arms with stars
-    const M = mass * 1e9 * SOLAR_MASS;
-    const arms = 2;
-    const starsPerArm = 120;
+    // Draw particles
+    for (const p of sim.particles) {
+      const sx = cx + p.x * scale;
+      const sy = cy + p.y * scale * 0.6; // tilt
+      const r = Math.sqrt(p.x * p.x + p.y * p.y);
+      const t = r / R_MAX;
 
-    for (let arm = 0; arm < arms; arm++) {
-      const armOffset = (arm * Math.PI * 2) / arms;
-      for (let i = 0; i < starsPerArm; i++) {
-        const t = i / starsPerArm;
-        const r = 15 + t * (Math.min(w, h) * 0.4);
-        const rMeters = (t * 30 + 1) * KPC;
+      const hue = t < 0.3 ? 45 : t < 0.6 ? 200 : 220;
+      const brightness = Math.max(0.3, 1 - t * 0.7);
+      const size = Math.max(0.8, (1 - t * 0.5) * 1.8);
 
-        // Calculate orbital velocity
-        const gAcc = (G * M) / (rMeters * rMeters);
-        const vNewton = Math.sqrt((G * M) / rMeters);
-        const vEmergent = Math.pow(G * M * G_CRIT, 0.25);
-        const vActual = showEmergent
-          ? (gAcc > G_CRIT ? vNewton : vEmergent)
-          : vNewton;
-
-        // Angular velocity for animation
-        const omega = vActual / rMeters;
-        const scale = 3e13;
-        const angle = armOffset + t * 3 + time * omega * scale;
-
-        const spread = t * 8;
-        const dx = (Math.random() - 0.5) * spread;
-        const dy = (Math.random() - 0.5) * spread;
-        const x = cx + Math.cos(angle) * r + dx;
-        const y = cy + Math.sin(angle) * r * 0.6 + dy; // tilt
-
-        const brightness = 0.3 + (1 - t) * 0.7;
-        const hue = t < 0.3 ? 45 : t < 0.6 ? 200 : 220;
-        const size = (1 - t * 0.5) * 1.8;
-
-        ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${hue}, 70%, 80%, ${brightness})`;
-        ctx.fill();
-      }
+      ctx.beginPath();
+      ctx.arc(sx, sy, size, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${hue}, 70%, 80%, ${brightness})`;
+      ctx.fill();
     }
-  }, [mass, showEmergent]);
+  }, []);
 
   const drawGraph = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number) => {
-    ctx.clearRect(0, 0, w, h);
+    const sim = simRef.current;
+    if (!sim.initialized) return;
 
+    ctx.clearRect(0, 0, w, h);
     const pad = { top: 30, right: 20, bottom: 40, left: 55 };
     const gw = w - pad.left - pad.right;
     const gh = h - pad.top - pad.bottom;
-    const M = mass * 1e9 * SOLAR_MASS;
 
     // Axes
     ctx.strokeStyle = "hsla(220, 15%, 40%, 0.5)";
@@ -88,99 +124,94 @@ const GalaxySimulator = () => {
     ctx.lineTo(pad.left + gw, pad.top + gh);
     ctx.stroke();
 
-    // Labels
     ctx.fillStyle = "hsla(220, 15%, 55%, 1)";
     ctx.font = "11px 'Space Grotesk'";
     ctx.textAlign = "center";
-    ctx.fillText("Radius (kpc)", pad.left + gw / 2, h - 5);
+    ctx.fillText("Radius", pad.left + gw / 2, h - 5);
     ctx.save();
     ctx.translate(12, pad.top + gh / 2);
     ctx.rotate(-Math.PI / 2);
-    ctx.fillText("V (km/s)", 0, 0);
+    ctx.fillText("Velocity", 0, 0);
     ctx.restore();
 
-    // Data
-    const maxR = 30 * KPC;
-    const points = 200;
-    const newtonian: [number, number][] = [];
-    const emergent: [number, number][] = [];
-    const combined: [number, number][] = [];
+    // Bin particles by radius to get velocity profile
+    const bins = 30;
+    const binSize = R_MAX / bins;
+    const vAvg = new Float64Array(bins);
+    const counts = new Float64Array(bins);
+
+    for (const p of sim.particles) {
+      const r = Math.sqrt(p.x * p.x + p.y * p.y);
+      const v = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+      const bi = Math.min(Math.floor(r / binSize), bins - 1);
+      vAvg[bi] += v;
+      counts[bi]++;
+    }
 
     let maxV = 0;
-    for (let i = 1; i <= points; i++) {
-      const r = (i / points) * maxR;
-      const gAcc = (G * M) / (r * r);
-      const vN = Math.sqrt((G * M) / r) / 1000;
-      const vE = Math.pow(G * M * G_CRIT, 0.25) / 1000;
-      const vC = gAcc > G_CRIT ? vN : vE;
-      newtonian.push([i / points, vN]);
-      emergent.push([i / points, vE]);
-      combined.push([i / points, vC]);
-      maxV = Math.max(maxV, vN, vC);
+    for (let i = 0; i < bins; i++) {
+      if (counts[i] > 0) vAvg[i] /= counts[i];
+      maxV = Math.max(maxV, vAvg[i]);
     }
-    maxV *= 1.2;
+    maxV = Math.max(maxV * 1.3, 0.1);
 
-    const drawCurve = (data: [number, number][], color: string, dashed = false) => {
-      ctx.beginPath();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      if (dashed) ctx.setLineDash([6, 4]);
-      else ctx.setLineDash([]);
-      data.forEach(([x, y], i) => {
-        const px = pad.left + x * gw;
-        const py = pad.top + gh - (y / maxV) * gh;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      });
-      ctx.stroke();
-      ctx.setLineDash([]);
-    };
-
-    // Newtonian (dashed)
-    drawCurve(newtonian, "hsla(45, 80%, 55%, 0.7)", true);
-
-    // Combined / emergent
-    if (showEmergent) {
-      drawCurve(combined, "hsla(185, 90%, 55%, 1)");
+    // Draw K-field profile (secondary)
+    ctx.beginPath();
+    ctx.strokeStyle = "hsla(45, 80%, 55%, 0.4)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    const kMax = 2;
+    for (let i = 0; i < sim.field.N; i += 2) {
+      const x = pad.left + (i / sim.field.N) * gw;
+      const kVal = sim.field.K[i];
+      const y = pad.top + gh - ((kVal / kMax) * gh);
+      if (i === 0) ctx.moveTo(x, Math.max(pad.top, Math.min(pad.top + gh, y)));
+      else ctx.lineTo(x, Math.max(pad.top, Math.min(pad.top + gh, y)));
     }
+    ctx.stroke();
+    ctx.setLineDash([]);
 
-    // g_crit threshold line
-    const rCrit = (G * M) / G_CRIT;
-    const xCrit = (rCrit / maxR);
-    if (xCrit > 0 && xCrit < 1) {
-      const px = pad.left + xCrit * gw;
-      ctx.beginPath();
-      ctx.strokeStyle = "hsla(0, 70%, 55%, 0.5)";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
-      ctx.moveTo(px, pad.top);
-      ctx.lineTo(px, pad.top + gh);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = "hsla(0, 70%, 65%, 0.8)";
-      ctx.font = "10px 'Space Grotesk'";
-      ctx.textAlign = "center";
-      ctx.fillText("g_crit", px, pad.top - 5);
+    // Draw velocity curve from particles
+    ctx.beginPath();
+    ctx.strokeStyle = showEmergent ? "hsla(185, 90%, 55%, 1)" : "hsla(45, 80%, 55%, 0.9)";
+    ctx.lineWidth = 2;
+    let started = false;
+    for (let i = 0; i < bins; i++) {
+      if (counts[i] < 2) continue;
+      const x = pad.left + ((i + 0.5) / bins) * gw;
+      const y = pad.top + gh - (vAvg[i] / maxV) * gh;
+      if (!started) { ctx.moveTo(x, y); started = true; }
+      else ctx.lineTo(x, y);
     }
+    ctx.stroke();
 
     // Legend
     const ly = pad.top + 10;
     ctx.font = "11px 'Space Grotesk'";
-    ctx.fillStyle = "hsla(45, 80%, 55%, 0.9)";
-    ctx.setLineDash([6, 4]);
-    ctx.strokeStyle = "hsla(45, 80%, 55%, 0.7)";
-    ctx.beginPath(); ctx.moveTo(pad.left + 10, ly); ctx.lineTo(pad.left + 35, ly); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.textAlign = "left";
-    ctx.fillText("Newtonian", pad.left + 40, ly + 4);
 
-    if (showEmergent) {
-      ctx.fillStyle = "hsla(185, 90%, 55%, 0.9)";
-      ctx.strokeStyle = "hsla(185, 90%, 55%, 1)";
-      ctx.beginPath(); ctx.moveTo(pad.left + 10, ly + 18); ctx.lineTo(pad.left + 35, ly + 18); ctx.stroke();
-      ctx.fillText("Emergent", pad.left + 40, ly + 22);
-    }
-  }, [mass, showEmergent]);
+    ctx.strokeStyle = showEmergent ? "hsla(185, 90%, 55%, 1)" : "hsla(45, 80%, 55%, 0.9)";
+    ctx.beginPath();
+    ctx.moveTo(pad.left + 10, ly);
+    ctx.lineTo(pad.left + 35, ly);
+    ctx.stroke();
+    ctx.fillStyle = showEmergent ? "hsla(185, 90%, 55%, 0.9)" : "hsla(45, 80%, 55%, 0.9)";
+    ctx.textAlign = "left";
+    ctx.fillText("V(r) from K-field", pad.left + 40, ly + 4);
+
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = "hsla(45, 80%, 55%, 0.4)";
+    ctx.beginPath();
+    ctx.moveTo(pad.left + 10, ly + 18);
+    ctx.lineTo(pad.left + 35, ly + 18);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "hsla(45, 80%, 55%, 0.6)";
+    ctx.fillText("K(r) field", pad.left + 40, ly + 22);
+  }, [showEmergent]);
+
+  useEffect(() => {
+    initSim();
+  }, [initSim]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -199,10 +230,28 @@ const GalaxySimulator = () => {
     resize();
     window.addEventListener("resize", resize);
 
-    let start = Date.now();
     const loop = () => {
-      const time = (Date.now() - start) * 0.001;
-      drawGalaxy(ctx, canvas.width, canvas.height, time);
+      const sim = simRef.current;
+      if (sim.initialized) {
+        // Physics step
+        const density = depositMassRadial(sim.particles, mass, sim.field);
+        sim.field.step(DT, density);
+        if (showEmergent) {
+          stepParticlesRadial(sim.particles, sim.field, DT, FIELD_CONSTANTS.beta);
+        } else {
+          // Newtonian fallback: F = -M/r² radial
+          for (const p of sim.particles) {
+            const r = Math.sqrt(p.x * p.x + p.y * p.y);
+            if (r < 0.3) continue;
+            const a = -mass * 0.5 / (r * r);
+            p.vx += a * (p.x / r) * DT;
+            p.vy += a * (p.y / r) * DT;
+            p.x += p.vx * DT;
+            p.y += p.vy * DT;
+          }
+        }
+      }
+      drawGalaxy(ctx, canvas.width, canvas.height);
       drawGraph(gctx, graph.width, graph.height);
       animRef.current = requestAnimationFrame(loop);
     };
@@ -212,7 +261,7 @@ const GalaxySimulator = () => {
       cancelAnimationFrame(animRef.current);
       window.removeEventListener("resize", resize);
     };
-  }, [drawGalaxy, drawGraph]);
+  }, [drawGalaxy, drawGraph, mass, showEmergent, initSim]);
 
   return (
     <div className="rounded-xl border border-border bg-card/50 backdrop-blur-sm p-6 space-y-6">
@@ -226,7 +275,7 @@ const GalaxySimulator = () => {
               : "border-border text-muted-foreground"
           }`}
         >
-          {showEmergent ? "Emergent ON" : "Emergent OFF"}
+          {showEmergent ? "K-Field ON" : "K-Field OFF"}
         </button>
       </div>
 
@@ -234,8 +283,8 @@ const GalaxySimulator = () => {
 
       <div className="space-y-2">
         <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Galaxy Mass</span>
-          <span className="text-primary font-mono">{mass} × 10⁹ M☉</span>
+          <span className="text-muted-foreground">Central Mass</span>
+          <span className="text-primary font-mono">{mass} units</span>
         </div>
         <input
           type="range"
@@ -250,7 +299,7 @@ const GalaxySimulator = () => {
       <canvas ref={graphRef} className="w-full rounded-lg" />
 
       <p className="text-xs text-muted-foreground text-center">
-        Notice how the emergent curve stays <span className="text-primary">flat</span> at large radii — matching observed galaxy rotation curves without dark matter.
+        All motion emerges from the K-field equation: <span className="text-primary font-mono">acc = cK²∇²K − 3H₀K̇ − μ²(K−1) + αρ</span>
       </p>
     </div>
   );
