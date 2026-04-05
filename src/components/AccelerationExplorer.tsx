@@ -1,10 +1,12 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { RadialKField, depositMassRadial, FIELD_CONSTANTS } from "@/lib/kfield-physics";
+import DiagnosticsPanel, { DiagnosticsData } from "./DiagnosticsPanel";
 
 const AccelerationExplorer = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mass, setMass] = useState(80);
+  const [diag, setDiag] = useState<DiagnosticsData>({ kineticEnergy: 0, fieldEnergy: 0, totalEnergy: 0, avgVelocity: 0, avgRadius: 0, radialDispersion: 0 });
 
   const draw = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number) => {
     ctx.clearRect(0, 0, w, h);
@@ -124,6 +126,24 @@ const AccelerationExplorer = () => {
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
+
+    // Compute field diagnostics
+    const fe = field.energy();
+    const accData: { r: number; a: number }[] = [];
+    for (let i = 2; i < GRID_N - 2; i++) {
+      accData.push({ r: field.r(i), a: Math.abs(FIELD_CONSTANTS.beta * field.gradK[i]) });
+    }
+    const avgR = accData.reduce((s, d) => s + d.r, 0) / accData.length;
+    const avgA = accData.reduce((s, d) => s + d.a, 0) / accData.length;
+    const sigR = Math.sqrt(accData.reduce((s, d) => s + (d.r - avgR) ** 2, 0) / accData.length);
+    setDiag({
+      kineticEnergy: fe.kinetic,
+      fieldEnergy: fe.potential,
+      totalEnergy: fe.total,
+      avgVelocity: avgA,
+      avgRadius: avgR,
+      radialDispersion: sigR,
+    });
   }, [mass]);
 
   useEffect(() => {
@@ -174,6 +194,8 @@ const AccelerationExplorer = () => {
           <p className="text-muted-foreground mt-1">Small ∇K → emergent regime dominates</p>
         </div>
       </div>
+
+      <DiagnosticsPanel data={diag} label="Acceleration Field Diagnostics" />
     </div>
   );
 };

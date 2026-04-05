@@ -1,9 +1,10 @@
-import { useState, useRef, useMemo, useEffect } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { Canvas, useFrame, extend, Object3DNode } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { motion } from "framer-motion";
 import { KField3D, KFieldParticle, stepParticles3D, depositMass3D, FIELD_CONSTANTS } from "@/lib/kfield-physics";
+import DiagnosticsPanel, { computeDiagnostics, DiagnosticsData } from "./DiagnosticsPanel";
 
 extend({ Line_: THREE.Line });
 
@@ -17,9 +18,11 @@ declare module "@react-three/fiber" {
 function KFieldParticles({
   mode,
   centralMass,
+  onDiag,
 }: {
   mode: "flat" | "closed";
   centralMass: number;
+  onDiag: (d: DiagnosticsData) => void;
 }) {
   const pointsRef = useRef<THREE.Points>(null);
   const GRID_N = 16; // Keep small for performance
@@ -83,6 +86,7 @@ function KFieldParticles({
 
   // Positions buffer
   const positions = useMemo(() => new Float32Array(NUM_PARTICLES * 3), []);
+  const frameRef = useRef(0);
 
   useFrame(() => {
     const sim = simRef.current;
@@ -123,6 +127,15 @@ function KFieldParticles({
 
     const attr = pointsRef.current.geometry.getAttribute("position") as THREE.BufferAttribute;
     attr.needsUpdate = true;
+
+    frameRef.current++;
+    if (frameRef.current % 15 === 0) {
+      let fieldE = 0;
+      for (let i = 0; i < sim.field.K.length; i++) {
+        fieldE += 0.5 * sim.field.Kdot[i] ** 2 + 0.5 * sim.field.mu2 * (sim.field.K[i] - 1) ** 2;
+      }
+      onDiag(computeDiagnostics(sim.particles, fieldE));
+    }
   });
 
   return (
@@ -209,6 +222,8 @@ function ClosedSphere({ visible }: { visible: boolean }) {
 /* ─── Main Component ─── */
 const UniverseGeometry = () => {
   const [mode, setMode] = useState<"flat" | "closed">("flat");
+  const [diag, setDiag] = useState<DiagnosticsData>({ kineticEnergy: 0, fieldEnergy: 0, totalEnergy: 0, avgVelocity: 0, avgRadius: 0, radialDispersion: 0 });
+  const handleDiag = useCallback((d: DiagnosticsData) => setDiag(d), []);
 
   return (
     <div className="space-y-6">
@@ -246,7 +261,7 @@ const UniverseGeometry = () => {
           <ambientLight intensity={0.3} />
           <FlatGrid visible={mode === "flat"} />
           <ClosedSphere visible={mode === "closed"} />
-          <KFieldParticles mode={mode} centralMass={5} />
+          <KFieldParticles mode={mode} centralMass={5} onDiag={handleDiag} />
           <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.5} />
         </Canvas>
       </motion.div>
@@ -276,6 +291,8 @@ const UniverseGeometry = () => {
           </>
         )}
       </motion.div>
+
+      <DiagnosticsPanel data={diag} label={`${mode === "flat" ? "Flat" : "S³"} K-Field Diagnostics`} />
     </div>
   );
 };

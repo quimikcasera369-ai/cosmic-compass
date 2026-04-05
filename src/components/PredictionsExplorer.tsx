@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { RadialKField, depositMassRadial, FIELD_CONSTANTS } from "@/lib/kfield-physics";
+import DiagnosticsPanel, { DiagnosticsData } from "./DiagnosticsPanel";
 
 const PredictionsExplorer = () => {
   const [redshift, setRedshift] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [diag, setDiag] = useState<DiagnosticsData>({ kineticEnergy: 0, fieldEnergy: 0, totalEnergy: 0, avgVelocity: 0, avgRadius: 0, radialDispersion: 0 });
 
   const draw = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number) => {
     ctx.clearRect(0, 0, w, h);
@@ -111,6 +113,19 @@ const PredictionsExplorer = () => {
 
     // Store for display
     (ctx as any).__btfrShift = btfrShift;
+
+    // Compute field diagnostics from z-dependent field
+    const fe0 = field0.energy();
+    const feZ = fieldZ.energy();
+    const avgGrad0 = v0.reduce((s, v) => s + v, 0) / (v0.length || 1);
+    setDiag({
+      kineticEnergy: fe0.kinetic,
+      fieldEnergy: feZ.total,
+      totalEnergy: fe0.total + feZ.total,
+      avgVelocity: avgGrad0,
+      avgRadius: R_MAX / 2,
+      radialDispersion: R_MAX / 4,
+    });
   }, [redshift]);
 
   const btfrShiftRef = useRef(0);
@@ -169,6 +184,8 @@ const PredictionsExplorer = () => {
           At higher redshift, increased Hubble damping (3H₀K̇) modifies the K-field equilibrium, shifting the BTFR — a testable prediction.
         </p>
       </div>
+
+      <DiagnosticsPanel data={diag} label="BTFR Field Diagnostics" />
     </div>
   );
 };

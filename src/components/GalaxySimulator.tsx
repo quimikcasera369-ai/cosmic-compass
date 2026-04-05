@@ -7,13 +7,16 @@ import {
   depositMassRadial,
   FIELD_CONSTANTS,
 } from "@/lib/kfield-physics";
+import DiagnosticsPanel, { computeDiagnostics, DiagnosticsData } from "./DiagnosticsPanel";
 
 const GalaxySimulator = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const graphRef = useRef<HTMLCanvasElement>(null);
   const [mass, setMass] = useState(50);
   const [showEmergent, setShowEmergent] = useState(true);
+  const [diag, setDiag] = useState<DiagnosticsData>({ kineticEnergy: 0, fieldEnergy: 0, totalEnergy: 0, avgVelocity: 0, avgRadius: 0, radialDispersion: 0 });
   const animRef = useRef<number>(0);
+  const frameCount = useRef(0);
 
   // Simulation state persisted across renders via ref
   const simRef = useRef<{
@@ -253,6 +256,13 @@ const GalaxySimulator = () => {
       }
       drawGalaxy(ctx, canvas.width, canvas.height);
       drawGraph(gctx, graph.width, graph.height);
+
+      frameCount.current++;
+      if (frameCount.current % 10 === 0) {
+        const fe = sim.field.energy();
+        setDiag(computeDiagnostics(sim.particles, fe.total));
+      }
+
       animRef.current = requestAnimationFrame(loop);
     };
     loop();
@@ -297,6 +307,8 @@ const GalaxySimulator = () => {
       </div>
 
       <canvas ref={graphRef} className="w-full rounded-lg" />
+
+      <DiagnosticsPanel data={diag} label="Galaxy Diagnostics" />
 
       <p className="text-xs text-muted-foreground text-center">
         All motion emerges from the K-field equation: <span className="text-primary font-mono">acc = cK²∇²K − 3H₀K̇ − μ²(K−1) + αρ</span>
