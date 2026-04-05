@@ -14,7 +14,9 @@ const GalaxySimulator = () => {
   const graphRef = useRef<HTMLCanvasElement>(null);
   const [mass, setMass] = useState(50);
   const [showEmergent, setShowEmergent] = useState(true);
+  const [diag, setDiag] = useState<DiagnosticsData>({ kineticEnergy: 0, fieldEnergy: 0, totalEnergy: 0, avgVelocity: 0, avgRadius: 0, radialDispersion: 0 });
   const animRef = useRef<number>(0);
+  const frameCount = useRef(0);
 
   // Simulation state persisted across renders via ref
   const simRef = useRef<{
