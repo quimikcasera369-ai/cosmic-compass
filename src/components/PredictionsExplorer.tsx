@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { RadialKField, depositMassRadial, FIELD_CONSTANTS } from "@/lib/kfield-physics";
+import DiagnosticsPanel, { DiagnosticsData } from "./DiagnosticsPanel";
 
 const PredictionsExplorer = () => {
   const [redshift, setRedshift] = useState(0);
