@@ -222,6 +222,8 @@ function ClosedSphere({ visible }: { visible: boolean }) {
 /* ─── Main Component ─── */
 const UniverseGeometry = () => {
   const [mode, setMode] = useState<"flat" | "closed">("flat");
+  const [diag, setDiag] = useState<DiagnosticsData>({ kineticEnergy: 0, fieldEnergy: 0, totalEnergy: 0, avgVelocity: 0, avgRadius: 0, radialDispersion: 0 });
+  const handleDiag = useCallback((d: DiagnosticsData) => setDiag(d), []);
 
   return (
     <div className="space-y-6">
