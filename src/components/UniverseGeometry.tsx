@@ -127,6 +127,15 @@ function KFieldParticles({
 
     const attr = pointsRef.current.geometry.getAttribute("position") as THREE.BufferAttribute;
     attr.needsUpdate = true;
+
+    frameRef.current++;
+    if (frameRef.current % 15 === 0) {
+      let fieldE = 0;
+      for (let i = 0; i < sim.field.K.length; i++) {
+        fieldE += 0.5 * sim.field.Kdot[i] ** 2 + 0.5 * sim.field.mu2 * (sim.field.K[i] - 1) ** 2;
+      }
+      onDiag(computeDiagnostics(sim.particles, fieldE));
+    }
   });
 
   return (
