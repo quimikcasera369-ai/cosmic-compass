@@ -184,6 +184,8 @@ const PredictionsExplorer = () => {
           At higher redshift, increased Hubble damping (3H₀K̇) modifies the K-field equilibrium, shifting the BTFR — a testable prediction.
         </p>
       </div>
+
+      <DiagnosticsPanel data={diag} label="BTFR Field Diagnostics" />
     </div>
   );
 };

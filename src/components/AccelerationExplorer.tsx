@@ -194,6 +194,8 @@ const AccelerationExplorer = () => {
           <p className="text-muted-foreground mt-1">Small ∇K → emergent regime dominates</p>
         </div>
       </div>
+
+      <DiagnosticsPanel data={diag} label="Acceleration Field Diagnostics" />
     </div>
   );
 };
