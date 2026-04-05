@@ -126,6 +126,24 @@ const AccelerationExplorer = () => {
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
+
+    // Compute field diagnostics
+    const fe = field.energy();
+    const accData: { r: number; a: number }[] = [];
+    for (let i = 2; i < GRID_N - 2; i++) {
+      accData.push({ r: field.r(i), a: Math.abs(FIELD_CONSTANTS.beta * field.gradK[i]) });
+    }
+    const avgR = accData.reduce((s, d) => s + d.r, 0) / accData.length;
+    const avgA = accData.reduce((s, d) => s + d.a, 0) / accData.length;
+    const sigR = Math.sqrt(accData.reduce((s, d) => s + (d.r - avgR) ** 2, 0) / accData.length);
+    setDiag({
+      kineticEnergy: fe.kinetic,
+      fieldEnergy: fe.potential,
+      totalEnergy: fe.total,
+      avgVelocity: avgA,
+      avgRadius: avgR,
+      radialDispersion: sigR,
+    });
   }, [mass]);
 
   useEffect(() => {
