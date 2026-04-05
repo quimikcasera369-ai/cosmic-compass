@@ -7,6 +7,7 @@ import {
   depositMassRadial,
   FIELD_CONSTANTS,
 } from "@/lib/kfield-physics";
+import DiagnosticsPanel, { computeDiagnostics, DiagnosticsData } from "./DiagnosticsPanel";
 
 const GalaxySimulator = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
