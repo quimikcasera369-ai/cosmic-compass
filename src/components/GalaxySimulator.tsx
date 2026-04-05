@@ -308,6 +308,8 @@ const GalaxySimulator = () => {
 
       <canvas ref={graphRef} className="w-full rounded-lg" />
 
+      <DiagnosticsPanel data={diag} label="Galaxy Diagnostics" />
+
       <p className="text-xs text-muted-foreground text-center">
         All motion emerges from the K-field equation: <span className="text-primary font-mono">acc = cK²∇²K − 3H₀K̇ − μ²(K−1) + αρ</span>
       </p>

@@ -291,6 +291,8 @@ const UniverseGeometry = () => {
           </>
         )}
       </motion.div>
+
+      <DiagnosticsPanel data={diag} label={`${mode === "flat" ? "Flat" : "S³"} K-Field Diagnostics`} />
     </div>
   );
 };
