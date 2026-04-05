@@ -261,7 +261,7 @@ const UniverseGeometry = () => {
           <ambientLight intensity={0.3} />
           <FlatGrid visible={mode === "flat"} />
           <ClosedSphere visible={mode === "closed"} />
-          <KFieldParticles mode={mode} centralMass={5} />
+          <KFieldParticles mode={mode} centralMass={5} onDiag={handleDiag} />
           <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.5} />
         </Canvas>
       </motion.div>
