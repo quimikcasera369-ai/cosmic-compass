@@ -1,9 +1,10 @@
-import { useState, useRef, useMemo, useEffect } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { Canvas, useFrame, extend, Object3DNode } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { motion } from "framer-motion";
 import { KField3D, KFieldParticle, stepParticles3D, depositMass3D, FIELD_CONSTANTS } from "@/lib/kfield-physics";
+import DiagnosticsPanel, { computeDiagnostics, DiagnosticsData } from "./DiagnosticsPanel";
 
 extend({ Line_: THREE.Line });
 
