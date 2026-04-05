@@ -6,6 +6,7 @@ import DiagnosticsPanel, { DiagnosticsData } from "./DiagnosticsPanel";
 const AccelerationExplorer = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mass, setMass] = useState(80);
+  const [diag, setDiag] = useState<DiagnosticsData>({ kineticEnergy: 0, fieldEnergy: 0, totalEnergy: 0, avgVelocity: 0, avgRadius: 0, radialDispersion: 0 });
 
   const draw = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number) => {
     ctx.clearRect(0, 0, w, h);
