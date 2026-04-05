@@ -18,9 +18,11 @@ declare module "@react-three/fiber" {
 function KFieldParticles({
   mode,
   centralMass,
+  onDiag,
 }: {
   mode: "flat" | "closed";
   centralMass: number;
+  onDiag: (d: DiagnosticsData) => void;
 }) {
   const pointsRef = useRef<THREE.Points>(null);
   const GRID_N = 16; // Keep small for performance
