@@ -113,6 +113,19 @@ const PredictionsExplorer = () => {
 
     // Store for display
     (ctx as any).__btfrShift = btfrShift;
+
+    // Compute field diagnostics from z-dependent field
+    const fe0 = field0.energy();
+    const feZ = fieldZ.energy();
+    const avgGrad0 = v0.reduce((s, v) => s + v, 0) / (v0.length || 1);
+    setDiag({
+      kineticEnergy: fe0.kinetic,
+      fieldEnergy: feZ.total,
+      totalEnergy: fe0.total + feZ.total,
+      avgVelocity: avgGrad0,
+      avgRadius: R_MAX / 2,
+      radialDispersion: R_MAX / 4,
+    });
   }, [redshift]);
 
   const btfrShiftRef = useRef(0);
