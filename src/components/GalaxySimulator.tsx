@@ -256,6 +256,13 @@ const GalaxySimulator = () => {
       }
       drawGalaxy(ctx, canvas.width, canvas.height);
       drawGraph(gctx, graph.width, graph.height);
+
+      frameCount.current++;
+      if (frameCount.current % 10 === 0) {
+        const fe = sim.field.energy();
+        setDiag(computeDiagnostics(sim.particles, fe.total));
+      }
+
       animRef.current = requestAnimationFrame(loop);
     };
     loop();
