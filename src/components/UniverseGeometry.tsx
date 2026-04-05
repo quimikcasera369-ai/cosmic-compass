@@ -86,6 +86,7 @@ function KFieldParticles({
 
   // Positions buffer
   const positions = useMemo(() => new Float32Array(NUM_PARTICLES * 3), []);
+  const frameRef = useRef(0);
 
   useFrame(() => {
     const sim = simRef.current;
