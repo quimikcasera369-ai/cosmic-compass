@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { RadialKField, depositMassRadial, FIELD_CONSTANTS } from "@/lib/kfield-physics";
+import { RadialKField, FIELD_CONSTANTS } from "@/lib/kfield-physics";
 import DiagnosticsPanel, { DiagnosticsData } from "./DiagnosticsPanel";
 
 const PredictionsExplorer = () => {
   const [redshift, setRedshift] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [btfrDisplay, setBtfrDisplay] = useState(0);
   const [diag, setDiag] = useState<DiagnosticsData>({ kineticEnergy: 0, fieldEnergy: 0, totalEnergy: 0, avgVelocity: 0, avgRadius: 0, radialDispersion: 0 });
 
   const draw = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number) => {
@@ -18,7 +19,7 @@ const PredictionsExplorer = () => {
     const R_MAX = 20;
     const MASS = 50;
 
-    // z=0 field
+    // z=0 field — evolve to convergence
     const field0 = new RadialKField(GRID_N, R_MAX, FIELD_CONSTANTS);
     const density0 = new Float64Array(GRID_N);
     for (let i = 0; i < 4; i++) {
@@ -26,8 +27,7 @@ const PredictionsExplorer = () => {
       const vol = 4 * Math.PI * rr * rr * field0.dr;
       density0[i] = MASS / (4 * vol + 1e-30);
     }
-    for (let s = 0; s < 300; s++) field0.step(0.005, density0);
-    field0.computeGradient();
+    field0.stepToEquilibrium(0.005, density0, 1e-4, 2000);
 
     // z-dependent field: H0 scales with redshift → more damping at high z
     const paramsZ = {
@@ -42,8 +42,7 @@ const PredictionsExplorer = () => {
       const vol = 4 * Math.PI * rr * rr * fieldZ.dr;
       densityZ[i] = MASS / (4 * vol + 1e-30);
     }
-    for (let s = 0; s < 300; s++) fieldZ.step(0.005, densityZ);
-    fieldZ.computeGradient();
+    fieldZ.stepToEquilibrium(0.005, densityZ, 1e-4, 2000);
 
     // Axes
     ctx.strokeStyle = "hsla(220, 15%, 40%, 0.5)";
@@ -70,7 +69,9 @@ const PredictionsExplorer = () => {
       for (let i = 2; i < GRID_N - 2; i++) {
         const rr = field.r(i);
         const gradMag = Math.abs(field.gradK[i]);
-        const v = Math.sqrt(FIELD_CONSTANTS.beta * rr * gradMag);
+        const arg = FIELD_CONSTANTS.beta * rr * gradMag;
+        let v = arg > 0 ? Math.sqrt(arg) : 0;
+        if (!isFinite(v)) v = 0;
         vels.push(v);
       }
       return vels;
@@ -80,14 +81,25 @@ const PredictionsExplorer = () => {
     const vZ = computeVProfile(fieldZ);
     const maxV = Math.max(...v0, ...vZ) * 1.2 || 1;
 
+    // Fallback if all zero
+    if (maxV <= 0) {
+      ctx.fillStyle = "hsla(220, 15%, 55%, 0.7)";
+      ctx.font = "12px 'Space Grotesk'";
+      ctx.textAlign = "center";
+      ctx.fillText("Field not converged", pad.left + gw / 2, pad.top + gh / 2);
+      return;
+    }
+
     const drawProfile = (vels: number[], color: string, label: string) => {
       ctx.beginPath();
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
+      let started = false;
       for (let i = 0; i < vels.length; i++) {
         const x = pad.left + ((i + 2) / GRID_N) * gw;
         const y = pad.top + gh - (vels[i] / maxV) * gh;
-        if (i === 0) ctx.moveTo(x, y);
+        if (!isFinite(x) || !isFinite(y)) continue;
+        if (!started) { ctx.moveTo(x, y); started = true; }
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
@@ -96,9 +108,11 @@ const PredictionsExplorer = () => {
       ctx.fillStyle = color;
       ctx.font = "10px 'Space Grotesk'";
       ctx.textAlign = "right";
-      const lastV = vels[vels.length - 1];
+      const lastV = vels[vels.length - 1] || 0;
       const yLabel = pad.top + gh - (lastV / maxV) * gh;
-      ctx.fillText(label, pad.left + gw - 5, yLabel - 8);
+      if (isFinite(yLabel)) {
+        ctx.fillText(label, pad.left + gw - 5, yLabel - 8);
+      }
     };
 
     drawProfile(v0, "hsla(220, 20%, 45%, 0.6)", "z = 0");
@@ -106,29 +120,30 @@ const PredictionsExplorer = () => {
       drawProfile(vZ, "hsla(185, 90%, 55%, 1)", `z = ${redshift.toFixed(1)}`);
     }
 
-    // Compute BTFR shift from K-field
+    // Compute BTFR shift from actual field data
     const v0_flat = v0.length > 0 ? v0[v0.length - 1] : 0;
     const vZ_flat = vZ.length > 0 ? vZ[vZ.length - 1] : 0;
-    const btfrShift = v0_flat > 0 ? Math.log10((vZ_flat / v0_flat) ** 4 + 1e-30) : 0;
+    let btfrShift = 0;
+    if (v0_flat > 0 && vZ_flat > 0) {
+      const ratio = vZ_flat / v0_flat;
+      btfrShift = Math.log10(Math.pow(ratio, 4) + 1e-30);
+    }
+    if (!isFinite(btfrShift)) btfrShift = 0;
+    setBtfrDisplay(btfrShift);
 
-    // Store for display
-    (ctx as any).__btfrShift = btfrShift;
-
-    // Compute field diagnostics from z-dependent field
+    // Diagnostics
     const fe0 = field0.energy();
     const feZ = fieldZ.energy();
-    const avgGrad0 = v0.reduce((s, v) => s + v, 0) / (v0.length || 1);
+    const avgV = v0.reduce((s, v) => s + v, 0) / (v0.length || 1);
     setDiag({
       kineticEnergy: fe0.kinetic,
       fieldEnergy: feZ.total,
       totalEnergy: fe0.total + feZ.total,
-      avgVelocity: avgGrad0,
+      avgVelocity: isFinite(avgV) ? avgV : 0,
       avgRadius: R_MAX / 2,
       radialDispersion: R_MAX / 4,
     });
   }, [redshift]);
-
-  const btfrShiftRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -141,15 +156,11 @@ const PredictionsExplorer = () => {
     };
     resize();
     draw(ctx, canvas.width, canvas.height);
-    btfrShiftRef.current = (ctx as any).__btfrShift || 0;
 
-    const handler = () => { resize(); draw(ctx, canvas.width, canvas.height); btfrShiftRef.current = (ctx as any).__btfrShift || 0; };
+    const handler = () => { resize(); draw(ctx, canvas.width, canvas.height); };
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
   }, [draw]);
-
-  // Compute BTFR shift for display (simplified estimate)
-  const btfrShift = FIELD_CONSTANTS.H0 * redshift * 0.8;
 
   return (
     <div className="rounded-xl border border-border bg-card/50 backdrop-blur-sm p-6 space-y-6">
@@ -177,7 +188,7 @@ const PredictionsExplorer = () => {
         <div className="flex justify-between items-center">
           <span className="text-sm text-muted-foreground">K-field BTFR shift</span>
           <span className="text-accent font-mono font-bold text-lg">
-            +{btfrShift.toFixed(3)} dex
+            {btfrDisplay >= 0 ? "+" : ""}{btfrDisplay.toFixed(3)} dex
           </span>
         </div>
         <p className="text-xs text-muted-foreground mt-2">

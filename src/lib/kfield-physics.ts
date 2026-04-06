@@ -99,10 +99,12 @@ export class RadialKField {
         - mu2 * (K[i] - 1.0)
         + alpha * massDensity[i];
       Kdot[i] += acc * dt * 0.5;
+      if (!isFinite(Kdot[i])) Kdot[i] = 0;
     }
     // Drift
     for (let i = 0; i < N; i++) {
       K[i] += Kdot[i] * dt;
+      if (!isFinite(K[i])) K[i] = 1.0;
     }
     // Recompute Laplacian after drift
     this.computeLaplacian();
@@ -113,9 +115,39 @@ export class RadialKField {
         - mu2 * (K[i] - 1.0)
         + alpha * massDensity[i];
       Kdot[i] += acc * dt * 0.5;
+      if (!isFinite(Kdot[i])) Kdot[i] = 0;
     }
 
     this.computeGradient();
+  }
+
+  /**
+   * Evolve the field until convergence or maxIter.
+   * Convergence: max(|Kdot|) < threshold
+   */
+  stepToEquilibrium(
+    dt: number,
+    massDensity: Float64Array,
+    threshold: number = 1e-4,
+    maxIter: number = 2000
+  ): number {
+    let iter = 0;
+    let converged = false;
+    while (!converged && iter < maxIter) {
+      this.step(dt, massDensity);
+      iter++;
+      // Check convergence every 10 steps
+      if (iter % 10 === 0) {
+        let maxKdot = 0;
+        for (let i = 0; i < this.N; i++) {
+          const v = Math.abs(this.Kdot[i]);
+          if (v > maxKdot) maxKdot = v;
+        }
+        if (maxKdot < threshold) converged = true;
+      }
+    }
+    this.computeGradient();
+    return iter;
   }
 
   /** Compute total field energy: kinetic + potential */
