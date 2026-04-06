@@ -99,12 +99,18 @@ export class RadialKField {
         - mu2 * (K[i] - 1.0)
         + alpha * massDensity[i];
       Kdot[i] += acc * dt * 0.5;
+      // Clamp magnitude to prevent blowup
       if (!isFinite(Kdot[i])) Kdot[i] = 0;
+      else if (Kdot[i] > 50) Kdot[i] = 50;
+      else if (Kdot[i] < -50) Kdot[i] = -50;
     }
     // Drift
     for (let i = 0; i < N; i++) {
       K[i] += Kdot[i] * dt;
+      // Clamp K to physical range
       if (!isFinite(K[i])) K[i] = 1.0;
+      else if (K[i] > 20) K[i] = 20;
+      else if (K[i] < 0.01) K[i] = 0.01;
     }
     // Recompute Laplacian after drift
     this.computeLaplacian();
@@ -116,6 +122,8 @@ export class RadialKField {
         + alpha * massDensity[i];
       Kdot[i] += acc * dt * 0.5;
       if (!isFinite(Kdot[i])) Kdot[i] = 0;
+      else if (Kdot[i] > 50) Kdot[i] = 50;
+      else if (Kdot[i] < -50) Kdot[i] = -50;
     }
 
     this.computeGradient();
@@ -157,10 +165,17 @@ export class RadialKField {
     for (let i = 0; i < this.N; i++) {
       const rr = this.r(i);
       const vol = 4 * Math.PI * rr * rr * this.dr;
-      kinetic += 0.5 * this.Kdot[i] * this.Kdot[i] * vol;
-      potential += 0.5 * this.mu2 * (this.K[i] - 1.0) ** 2 * vol;
+      const ke = 0.5 * this.Kdot[i] * this.Kdot[i] * vol;
+      const pe = 0.5 * this.mu2 * (this.K[i] - 1.0) ** 2 * vol;
+      if (isFinite(ke)) kinetic += ke;
+      if (isFinite(pe)) potential += pe;
     }
-    return { kinetic, potential, total: kinetic + potential };
+    const total = kinetic + potential;
+    return {
+      kinetic: isFinite(kinetic) ? kinetic : 0,
+      potential: isFinite(potential) ? potential : 0,
+      total: isFinite(total) ? total : 0,
+    };
   }
 }
 
