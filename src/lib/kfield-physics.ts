@@ -99,12 +99,18 @@ export class RadialKField {
         - mu2 * (K[i] - 1.0)
         + alpha * massDensity[i];
       Kdot[i] += acc * dt * 0.5;
+      // Clamp magnitude to prevent blowup
       if (!isFinite(Kdot[i])) Kdot[i] = 0;
+      else if (Kdot[i] > 50) Kdot[i] = 50;
+      else if (Kdot[i] < -50) Kdot[i] = -50;
     }
     // Drift
     for (let i = 0; i < N; i++) {
       K[i] += Kdot[i] * dt;
+      // Clamp K to physical range
       if (!isFinite(K[i])) K[i] = 1.0;
+      else if (K[i] > 20) K[i] = 20;
+      else if (K[i] < 0.01) K[i] = 0.01;
     }
     // Recompute Laplacian after drift
     this.computeLaplacian();
@@ -116,6 +122,8 @@ export class RadialKField {
         + alpha * massDensity[i];
       Kdot[i] += acc * dt * 0.5;
       if (!isFinite(Kdot[i])) Kdot[i] = 0;
+      else if (Kdot[i] > 50) Kdot[i] = 50;
+      else if (Kdot[i] < -50) Kdot[i] = -50;
     }
 
     this.computeGradient();
