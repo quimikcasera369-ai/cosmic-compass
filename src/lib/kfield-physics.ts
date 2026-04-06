@@ -165,10 +165,17 @@ export class RadialKField {
     for (let i = 0; i < this.N; i++) {
       const rr = this.r(i);
       const vol = 4 * Math.PI * rr * rr * this.dr;
-      kinetic += 0.5 * this.Kdot[i] * this.Kdot[i] * vol;
-      potential += 0.5 * this.mu2 * (this.K[i] - 1.0) ** 2 * vol;
+      const ke = 0.5 * this.Kdot[i] * this.Kdot[i] * vol;
+      const pe = 0.5 * this.mu2 * (this.K[i] - 1.0) ** 2 * vol;
+      if (isFinite(ke)) kinetic += ke;
+      if (isFinite(pe)) potential += pe;
     }
-    return { kinetic, potential, total: kinetic + potential };
+    const total = kinetic + potential;
+    return {
+      kinetic: isFinite(kinetic) ? kinetic : 0,
+      potential: isFinite(potential) ? potential : 0,
+      total: isFinite(total) ? total : 0,
+    };
   }
 }
 
