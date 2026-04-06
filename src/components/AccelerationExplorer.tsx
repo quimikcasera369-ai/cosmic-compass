@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { RadialKField, depositMassRadial, FIELD_CONSTANTS } from "@/lib/kfield-physics";
+import { RadialKField, FIELD_CONSTANTS } from "@/lib/kfield-physics";
 import DiagnosticsPanel, { DiagnosticsData } from "./DiagnosticsPanel";
 
 const AccelerationExplorer = () => {
@@ -17,10 +17,9 @@ const AccelerationExplorer = () => {
     const GRID_N = 200;
     const R_MAX = 25;
 
-    // Create field and evolve to equilibrium
+    // Create field and evolve to equilibrium with convergence check
     const field = new RadialKField(GRID_N, R_MAX, FIELD_CONSTANTS);
     const density = new Float64Array(GRID_N);
-    // Deposit central mass
     const smoothR = 5;
     for (let i = 0; i < smoothR; i++) {
       const rr = field.r(i);
@@ -28,11 +27,8 @@ const AccelerationExplorer = () => {
       density[i] = mass / (smoothR * vol + 1e-30);
     }
 
-    // Evolve field to quasi-static equilibrium
-    for (let i = 0; i < 500; i++) {
-      field.step(0.005, density);
-    }
-    field.computeGradient();
+    // Convergence-based equilibration
+    field.stepToEquilibrium(0.005, density, 1e-4, 2000);
 
     // Axes
     ctx.strokeStyle = "hsla(220, 15%, 40%, 0.5)";
@@ -58,7 +54,8 @@ const AccelerationExplorer = () => {
     let maxAcc = 0;
     let minAcc = Infinity;
     for (let i = 2; i < GRID_N - 2; i++) {
-      const a = Math.abs(FIELD_CONSTANTS.beta * field.gradK[i]);
+      let a = Math.abs(FIELD_CONSTANTS.beta * field.gradK[i]);
+      if (!isFinite(a)) a = 0;
       accProfile.push(a);
       if (a > 0) {
         maxAcc = Math.max(maxAcc, a);
@@ -66,24 +63,37 @@ const AccelerationExplorer = () => {
       }
     }
 
-    // Use log scale
-    const logMin = minAcc > 0 ? Math.log10(minAcc) - 0.5 : -6;
-    const logMax = Math.log10(maxAcc + 1e-30) + 0.5;
+    // Fallback if profile is degenerate
+    if (maxAcc <= 0 || !isFinite(maxAcc)) {
+      ctx.fillStyle = "hsla(220, 15%, 55%, 0.7)";
+      ctx.font = "12px 'Space Grotesk'";
+      ctx.textAlign = "center";
+      ctx.fillText("Field not converged — adjust mass", pad.left + gw / 2, pad.top + gh / 2);
+      return;
+    }
+    if (minAcc <= 0 || !isFinite(minAcc)) minAcc = maxAcc * 1e-6;
+
+    // Log scale with guards
+    const logMin = Math.log10(minAcc) - 0.5;
+    const logMax = Math.log10(maxAcc) + 0.5;
     const logRange = logMax - logMin;
 
-    // Find transition point: where acceleration profile changes slope significantly
-    // This is the emergent g_crit analog
-    let transitionIdx = Math.floor(accProfile.length * 0.3);
-    for (let i = 5; i < accProfile.length - 5; i++) {
-      const slopeBefore = accProfile[i] - accProfile[i - 3];
-      const slopeAfter = accProfile[i + 3] - accProfile[i];
-      if (Math.abs(slopeBefore) > 0 && Math.abs(slopeAfter / (slopeBefore + 1e-30)) < 0.3) {
+    if (logRange <= 0) return; // degenerate range
+
+    // Find transition: direct g_crit comparison
+    // g_crit = midpoint of acceleration range in log space
+    const gCritValue = Math.sqrt(maxAcc * minAcc); // geometric mean as emergent g_crit
+    let transitionIdx = -1;
+    for (let i = 0; i < accProfile.length; i++) {
+      if (accProfile[i] > 0 && accProfile[i] <= gCritValue) {
         transitionIdx = i;
         break;
       }
     }
+    if (transitionIdx < 0) transitionIdx = Math.floor(accProfile.length * 0.4);
 
-    const gCritY = pad.top + gh - ((Math.log10(accProfile[transitionIdx] + 1e-30) - logMin) / logRange) * gh;
+    const gCritLog = Math.log10(gCritValue);
+    const gCritY = pad.top + gh - ((gCritLog - logMin) / logRange) * gh;
 
     // Fill regions
     ctx.fillStyle = "hsla(185, 80%, 50%, 0.05)";
@@ -113,25 +123,29 @@ const AccelerationExplorer = () => {
     ctx.fillStyle = "hsla(270, 60%, 65%, 0.7)";
     ctx.fillText("WEAK K-FIELD (Emergent)", pad.left + 8, pad.top + gh - 10);
 
-    // Acceleration curve from K-field
+    // Acceleration curve
     ctx.beginPath();
     ctx.strokeStyle = "hsla(185, 90%, 55%, 1)";
     ctx.lineWidth = 2;
+    let started = false;
     for (let i = 0; i < accProfile.length; i++) {
       if (accProfile[i] <= 0) continue;
       const x = pad.left + ((i + 2) / GRID_N) * gw;
       const logA = Math.log10(accProfile[i]);
+      if (!isFinite(logA)) continue;
       const y = pad.top + gh - ((logA - logMin) / logRange) * gh;
-      if (i === 0) ctx.moveTo(x, y);
+      if (!isFinite(y)) continue;
+      if (!started) { ctx.moveTo(x, y); started = true; }
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
 
-    // Compute field diagnostics
+    // Diagnostics
     const fe = field.energy();
     const accData: { r: number; a: number }[] = [];
     for (let i = 2; i < GRID_N - 2; i++) {
-      accData.push({ r: field.r(i), a: Math.abs(FIELD_CONSTANTS.beta * field.gradK[i]) });
+      const a = Math.abs(FIELD_CONSTANTS.beta * field.gradK[i]);
+      accData.push({ r: field.r(i), a: isFinite(a) ? a : 0 });
     }
     const avgR = accData.reduce((s, d) => s + d.r, 0) / accData.length;
     const avgA = accData.reduce((s, d) => s + d.a, 0) / accData.length;
