@@ -8,7 +8,8 @@ import PredictionsExplorer from "@/components/PredictionsExplorer";
 import UniverseGeometry from "@/components/UniverseGeometry";
 import ConceptCard from "@/components/ConceptCard";
 import { motion } from "framer-motion";
-import { Orbit, Waves, Globe2, Sparkles, FlaskConical, Telescope } from "lucide-react";
+import { Orbit, Waves, Globe2, Sparkles, FlaskConical, Telescope, FlaskRound } from "lucide-react";
+import GalaxyDataLab from "@/components/GalaxyDataLab";
 
 const Index = () => {
   return (
@@ -170,6 +171,22 @@ const Index = () => {
           description="A theory without predictions is just a story. This model predicts that the Baryonic Tully-Fisher Relation should evolve with redshift — galaxies at z=2 should show a +0.120 dex shift. Upcoming surveys can test this."
         >
           <PredictionsExplorer />
+        </NarrativeSection>
+
+        {/* Galaxy Data Lab */}
+        <NarrativeSection
+          id="datalab"
+          badge="Data Lab"
+          badgeColor="gold"
+          title={
+            <>
+              <span className="text-foreground">Galaxy </span>
+              <span className="gradient-text-gold">Data Lab</span>
+            </>
+          }
+          description="Test V⁴ ∝ M·H(z) with real data. Upload galaxy observations or use the sample dataset to compute α = a_obs / (c·H(z)) and classify each galaxy's gravitational regime."
+        >
+          <GalaxyDataLab />
         </NarrativeSection>
 
         {/* 7. Summary */}
