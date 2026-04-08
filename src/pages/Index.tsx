@@ -190,6 +190,22 @@ const Index = () => {
           <GalaxyDataLab />
         </NarrativeSection>
 
+        {/* Universe Lab */}
+        <NarrativeSection
+          id="universelab"
+          badge="Universe Lab"
+          badgeColor="cyan"
+          title={
+            <>
+              <span className="text-foreground">Universe </span>
+              <span className="gradient-text-cyan">Laboratory</span>
+            </>
+          }
+          description="A physics sandbox where random particles evolve under Newtonian gravity + K-field dynamics. Watch structures emerge and let the system automatically detect rotation laws, clustering, and field-mass memory effects."
+        >
+          <UniverseLab />
+        </NarrativeSection>
+
         {/* 7. Summary */}
         <section className="py-24 md:py-32 px-6">
           <motion.div
