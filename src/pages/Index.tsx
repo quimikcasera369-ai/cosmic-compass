@@ -10,6 +10,7 @@ import ConceptCard from "@/components/ConceptCard";
 import { motion } from "framer-motion";
 import { Orbit, Waves, Globe2, Sparkles, FlaskConical, Telescope, FlaskRound } from "lucide-react";
 import GalaxyDataLab from "@/components/GalaxyDataLab";
+import UniverseLab from "@/components/UniverseLab/UniverseLab";
 
 const Index = () => {
   return (
@@ -187,6 +188,22 @@ const Index = () => {
           description="Test V⁴ ∝ M·H(z) with real data. Upload galaxy observations or use the sample dataset to compute α = a_obs / (c·H(z)) and classify each galaxy's gravitational regime."
         >
           <GalaxyDataLab />
+        </NarrativeSection>
+
+        {/* Universe Lab */}
+        <NarrativeSection
+          id="universelab"
+          badge="Universe Lab"
+          badgeColor="cyan"
+          title={
+            <>
+              <span className="text-foreground">Universe </span>
+              <span className="gradient-text-cyan">Laboratory</span>
+            </>
+          }
+          description="A physics sandbox where random particles evolve under Newtonian gravity + K-field dynamics. Watch structures emerge and let the system automatically detect rotation laws, clustering, and field-mass memory effects."
+        >
+          <UniverseLab />
         </NarrativeSection>
 
         {/* 7. Summary */}
