@@ -10,6 +10,7 @@ import ConceptCard from "@/components/ConceptCard";
 import { motion } from "framer-motion";
 import { Orbit, Waves, Globe2, Sparkles, FlaskConical, Telescope, FlaskRound } from "lucide-react";
 import GalaxyDataLab from "@/components/GalaxyDataLab";
+import UniverseLab from "@/components/UniverseLab/UniverseLab";
 
 const Index = () => {
   return (
