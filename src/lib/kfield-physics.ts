@@ -348,9 +348,9 @@ export function stepParticles3D(
 
     const [gkx, gky, gkz] = field.sampleGradient(gx, gy, gz);
 
-    const ax = -beta * gkx;
-    const ay = -beta * gky;
-    const az = -beta * gkz;
+    const ax = beta * gkx;
+    const ay = beta * gky;
+    const az = beta * gkz;
 
     p.vx += ax * dt;
     p.vy += ay * dt;
