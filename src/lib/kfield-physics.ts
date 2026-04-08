@@ -320,8 +320,8 @@ export function stepParticlesRadial(
     const gi = Math.min(Math.floor(r / field.dr), field.N - 1);
     const dKdr = field.gradK[gi];
 
-    // Radial force: F = -β * dK/dr, projected to x,y
-    const Fr = -beta * dKdr;
+    // Radial force: F = +β * dK/dr (attract toward high-K regions where mass is)
+    const Fr = beta * dKdr;
     const ax = Fr * (p.x / r);
     const ay = Fr * (p.y / r);
 
