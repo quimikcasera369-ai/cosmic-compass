@@ -2,16 +2,53 @@
 // Completely isolated from existing simulation code
 
 const GRID = 16;
-const DOMAIN = 8; // extends from -DOMAIN/2 to +DOMAIN/2
+const DOMAIN = 8;
 const DX = DOMAIN / GRID;
-const DT = 0.004;
-const G_CONST = 1.0;
-const SOFTENING = 0.4;
-const BETA = 1.5;
-const ALPHA_K = 0.3;
-const MU2 = 0.05;
-const CK2 = 0.02;
-const DAMPING = 0.002;
+
+export interface SimParams {
+  dt: number;
+  G: number;
+  softening: number;
+  beta: number;
+  alphaK: number;
+  mu2: number;
+  cK2: number;
+  damping: number;
+  particleCount: number;
+  velocityClamp: number;
+  kClampMin: number;
+  kClampMax: number;
+  kDotClamp: number;
+  kDotDamping: number;
+  // Equation toggles / sign control
+  gravitySign: number;   // +1 or -1
+  kFieldSign: number;    // +1 or -1
+  enableGravity: boolean;
+  enableKField: boolean;
+  enableDamping: boolean;
+}
+
+export const DEFAULT_PARAMS: SimParams = {
+  dt: 0.004,
+  G: 1.0,
+  softening: 0.4,
+  beta: 1.5,
+  alphaK: 0.3,
+  mu2: 0.05,
+  cK2: 0.02,
+  damping: 0.002,
+  particleCount: 80,
+  velocityClamp: 15,
+  kClampMin: 0.01,
+  kClampMax: 15.0,
+  kDotClamp: 20,
+  kDotDamping: 0.98,
+  gravitySign: 1,
+  kFieldSign: 1,
+  enableGravity: true,
+  enableKField: true,
+  enableDamping: true,
+};
 
 export interface Particle {
   x: number; y: number; z: number;
@@ -51,14 +88,20 @@ export class UniverseLabEngine {
   kDot: Float32Array;
   time = 0;
   frameCount = 0;
+  params: SimParams;
 
   private history: AnalysisSnapshot[] = [];
   private maxHistory = 300;
 
-  constructor() {
+  constructor(params?: Partial<SimParams>) {
+    this.params = { ...DEFAULT_PARAMS, ...params };
     const n = GRID * GRID * GRID;
     this.kField = new Float32Array(n).fill(1.0);
     this.kDot = new Float32Array(n).fill(0);
+  }
+
+  updateParams(p: Partial<SimParams>) {
+    this.params = { ...this.params, ...p };
   }
 
   idx(ix: number, iy: number, iz: number): number {
@@ -76,7 +119,8 @@ export class UniverseLabEngine {
     return i * DX - DOMAIN / 2;
   }
 
-  initParticles(type: InitialConditionType, count = 80) {
+  initParticles(type: InitialConditionType, count?: number) {
+    const N = count ?? this.params.particleCount;
     this.particles = [];
     this.time = 0;
     this.frameCount = 0;
@@ -96,7 +140,7 @@ export class UniverseLabEngine {
           (Math.random() - 0.5) * half * 1.4,
         ]);
       }
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < N; i++) {
         const c = centers[Math.floor(Math.random() * nClusters)];
         const spread = 0.4 + Math.random() * 0.6;
         this.particles.push({
@@ -110,7 +154,7 @@ export class UniverseLabEngine {
         });
       }
     } else if (type === 'uniform') {
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < N; i++) {
         this.particles.push({
           x: (Math.random() - 0.5) * half * 2,
           y: (Math.random() - 0.5) * half * 2,
@@ -122,11 +166,10 @@ export class UniverseLabEngine {
         });
       }
     } else {
-      // mixed: half clustered, half uniform
       const cx = (Math.random() - 0.5) * half;
       const cy = (Math.random() - 0.5) * half;
       const cz = (Math.random() - 0.5) * half;
-      const halfN = Math.floor(count / 2);
+      const halfN = Math.floor(N / 2);
       for (let i = 0; i < halfN; i++) {
         this.particles.push({
           x: cx + randGauss() * 0.5,
@@ -138,7 +181,7 @@ export class UniverseLabEngine {
           mass: 0.8 + Math.random() * 1.2,
         });
       }
-      for (let i = halfN; i < count; i++) {
+      for (let i = halfN; i < N; i++) {
         this.particles.push({
           x: (Math.random() - 0.5) * half * 2,
           y: (Math.random() - 0.5) * half * 2,
@@ -151,7 +194,6 @@ export class UniverseLabEngine {
       }
     }
 
-    // Clamp initial positions
     for (const p of this.particles) {
       p.x = clamp(p.x, -DOMAIN / 2, DOMAIN / 2);
       p.y = clamp(p.y, -DOMAIN / 2, DOMAIN / 2);
@@ -176,8 +218,8 @@ export class UniverseLabEngine {
   }
 
   private evolveKField(rho: Float32Array) {
+    const { alphaK, mu2, cK2, dt, kClampMin, kClampMax, kDotClamp, kDotDamping } = this.params;
     const newK = new Float32Array(this.kField.length);
-    const n3 = GRID * GRID * GRID;
 
     for (let ix = 0; ix < GRID; ix++) {
       for (let iy = 0; iy < GRID; iy++) {
@@ -185,19 +227,18 @@ export class UniverseLabEngine {
           const i = this.idx(ix, iy, iz);
           const K = this.kField[i];
 
-          // Laplacian (6-point stencil, periodic)
           const lap =
             (this.kField[this.idx(ix + 1, iy, iz)] + this.kField[this.idx(ix - 1, iy, iz)] +
              this.kField[this.idx(ix, iy + 1, iz)] + this.kField[this.idx(ix, iy - 1, iz)] +
              this.kField[this.idx(ix, iy, iz + 1)] + this.kField[this.idx(ix, iy, iz - 1)] -
              6 * K) / (DX * DX);
 
-          const dKdt = ALPHA_K * rho[i] - MU2 * (K - 1) + CK2 * K * K * lap;
-          const newKdot = this.kDot[i] + dKdt * DT;
-          const clampedKdot = clamp(safeNum(newKdot), -20, 20);
-          const newVal = K + clampedKdot * DT;
-          newK[i] = clamp(safeNum(newVal, 1), 0.01, 15.0);
-          this.kDot[i] = clampedKdot * 0.98; // light damping
+          const dKdt = alphaK * rho[i] - mu2 * (K - 1) + cK2 * K * K * lap;
+          const newKdot = this.kDot[i] + dKdt * dt;
+          const clampedKdot = clamp(safeNum(newKdot), -kDotClamp, kDotClamp);
+          const newVal = K + clampedKdot * dt;
+          newK[i] = clamp(safeNum(newVal, 1), kClampMin, kClampMax);
+          this.kDot[i] = clampedKdot * kDotDamping;
         }
       }
     }
@@ -226,59 +267,68 @@ export class UniverseLabEngine {
   step() {
     const N = this.particles.length;
     if (N === 0) return;
+    const { dt, G, softening, beta, damping, velocityClamp, gravitySign, kFieldSign, enableGravity, enableKField, enableDamping } = this.params;
 
-    // 1. Deposit mass and evolve K field
     const rho = this.depositMass();
-    this.evolveKField(rho);
+    if (enableKField) {
+      this.evolveKField(rho);
+    }
 
-    // 2. Compute accelerations
-    const ax = new Float32Array(N);
-    const ay = new Float32Array(N);
-    const az = new Float32Array(N);
+    const axArr = new Float32Array(N);
+    const ayArr = new Float32Array(N);
+    const azArr = new Float32Array(N);
 
     for (let i = 0; i < N; i++) {
       const pi = this.particles[i];
       let fgx = 0, fgy = 0, fgz = 0;
 
-      // Direct N-body gravity
-      for (let j = 0; j < N; j++) {
-        if (i === j) continue;
-        const pj = this.particles[j];
-        const dx = pj.x - pi.x;
-        const dy = pj.y - pi.y;
-        const dz = pj.z - pi.z;
-        const r2 = dx * dx + dy * dy + dz * dz + SOFTENING * SOFTENING;
-        const r = Math.sqrt(r2);
-        const f = G_CONST * pj.mass / (r2 * r);
-        fgx += f * dx;
-        fgy += f * dy;
-        fgz += f * dz;
+      if (enableGravity) {
+        for (let j = 0; j < N; j++) {
+          if (i === j) continue;
+          const pj = this.particles[j];
+          const dx = pj.x - pi.x;
+          const dy = pj.y - pi.y;
+          const dz = pj.z - pi.z;
+          const r2 = dx * dx + dy * dy + dz * dz + softening * softening;
+          const r = Math.sqrt(r2);
+          const f = G * pj.mass / (r2 * r);
+          fgx += f * dx;
+          fgy += f * dy;
+          fgz += f * dz;
+        }
+        fgx *= gravitySign;
+        fgy *= gravitySign;
+        fgz *= gravitySign;
       }
 
-      // K-field gradient force
-      const [gkx, gky, gkz] = this.kGradientAt(pi.x, pi.y, pi.z);
+      let kfx = 0, kfy = 0, kfz = 0;
+      if (enableKField) {
+        const [gkx, gky, gkz] = this.kGradientAt(pi.x, pi.y, pi.z);
+        kfx = kFieldSign * beta * gkx;
+        kfy = kFieldSign * beta * gky;
+        kfz = kFieldSign * beta * gkz;
+      }
 
-      ax[i] = safeNum(fgx + BETA * gkx);
-      ay[i] = safeNum(fgy + BETA * gky);
-      az[i] = safeNum(fgz + BETA * gkz);
+      axArr[i] = safeNum(fgx + kfx);
+      ayArr[i] = safeNum(fgy + kfy);
+      azArr[i] = safeNum(fgz + kfz);
     }
 
-    // 3. Leapfrog integration
     const bound = DOMAIN / 2;
+    const damp = enableDamping ? damping : 0;
     for (let i = 0; i < N; i++) {
       const p = this.particles[i];
-      p.vx = clamp(safeNum(p.vx + ax[i] * DT - DAMPING * p.vx), -15, 15);
-      p.vy = clamp(safeNum(p.vy + ay[i] * DT - DAMPING * p.vy), -15, 15);
-      p.vz = clamp(safeNum(p.vz + az[i] * DT - DAMPING * p.vz), -15, 15);
-      p.x = clamp(safeNum(p.x + p.vx * DT), -bound, bound);
-      p.y = clamp(safeNum(p.y + p.vy * DT), -bound, bound);
-      p.z = clamp(safeNum(p.z + p.vz * DT), -bound, bound);
+      p.vx = clamp(safeNum(p.vx + axArr[i] * dt - damp * p.vx), -velocityClamp, velocityClamp);
+      p.vy = clamp(safeNum(p.vy + ayArr[i] * dt - damp * p.vy), -velocityClamp, velocityClamp);
+      p.vz = clamp(safeNum(p.vz + azArr[i] * dt - damp * p.vz), -velocityClamp, velocityClamp);
+      p.x = clamp(safeNum(p.x + p.vx * dt), -bound, bound);
+      p.y = clamp(safeNum(p.y + p.vy * dt), -bound, bound);
+      p.z = clamp(safeNum(p.z + p.vz * dt), -bound, bound);
     }
 
-    this.time += DT;
+    this.time += dt;
     this.frameCount++;
 
-    // 4. Snapshot every 2 frames
     if (this.frameCount % 2 === 0) {
       this.recordSnapshot();
     }
@@ -287,7 +337,6 @@ export class UniverseLabEngine {
   private recordSnapshot() {
     const particles = this.particles.map(p => ({ ...p }));
 
-    // Mass centroid
     let cx = 0, cy = 0, cz = 0, totalM = 0;
     for (const p of particles) {
       cx += p.x * p.mass;
@@ -297,7 +346,6 @@ export class UniverseLabEngine {
     }
     if (totalM > 0) { cx /= totalM; cy /= totalM; cz /= totalM; }
 
-    // K-field peak
     let maxK = -Infinity;
     let kpx = 0, kpy = 0, kpz = 0;
     for (let ix = 0; ix < GRID; ix++) {
@@ -314,13 +362,11 @@ export class UniverseLabEngine {
       }
     }
 
-    // KE
     let ke = 0;
     for (const p of particles) {
       ke += 0.5 * p.mass * (p.vx * p.vx + p.vy * p.vy + p.vz * p.vz);
     }
 
-    // Total K field energy (sum of K²)
     let kEnergy = 0;
     for (let i = 0; i < this.kField.length; i++) {
       const dK = this.kField[i] - 1;
