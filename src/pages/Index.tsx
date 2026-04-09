@@ -2,9 +2,7 @@ import StarField from "@/components/StarField";
 import HeroSection from "@/components/HeroSection";
 import NarrativeSection from "@/components/NarrativeSection";
 import GalaxySimulator from "@/components/GalaxySimulator";
-import AccelerationExplorer from "@/components/AccelerationExplorer";
 import CriticalAcceleration from "@/components/CriticalAcceleration";
-import PredictionsExplorer from "@/components/PredictionsExplorer";
 import UniverseGeometry from "@/components/UniverseGeometry";
 import ConceptCard from "@/components/ConceptCard";
 import { motion } from "framer-motion";
@@ -125,23 +123,6 @@ const Index = () => {
           <UniverseGeometry />
         </NarrativeSection>
 
-        {/* 4. Acceleration Explorer */}
-        <NarrativeSection
-          id="regimes"
-          badge="Two Regimes"
-          badgeColor="cyan"
-          title={
-            <>
-              <span className="text-foreground">A </span>
-              <span className="gradient-text-cyan">critical threshold</span>
-              <span className="text-foreground"> splits two worlds</span>
-            </>
-          }
-          description="Above the critical acceleration, familiar Newtonian gravity rules. Below it, the emergent regime takes over with its distinctive V⁴ = GM·g_crit scaling."
-        >
-          <AccelerationExplorer />
-        </NarrativeSection>
-
         {/* 5. Critical Acceleration */}
         <NarrativeSection
           id="critical"
@@ -156,22 +137,6 @@ const Index = () => {
           description="The critical acceleration isn't chosen — it's calculated from the speed of light, the expansion rate of the universe, and the geometry of three dimensions."
         >
           <CriticalAcceleration />
-        </NarrativeSection>
-
-        {/* 6. Predictions */}
-        <NarrativeSection
-          id="predictions"
-          badge="Testable"
-          badgeColor="cyan"
-          title={
-            <>
-              <span className="gradient-text-cyan">Predictions</span>
-              <span className="text-foreground"> that can be checked</span>
-            </>
-          }
-          description="A theory without predictions is just a story. This model predicts that the Baryonic Tully-Fisher Relation should evolve with redshift — galaxies at z=2 should show a +0.120 dex shift. Upcoming surveys can test this."
-        >
-          <PredictionsExplorer />
         </NarrativeSection>
 
         {/* Galaxy Data Lab */}
