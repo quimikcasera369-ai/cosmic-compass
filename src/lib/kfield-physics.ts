@@ -320,8 +320,8 @@ export function stepParticlesRadial(
     const gi = Math.min(Math.floor(r / field.dr), field.N - 1);
     const dKdr = field.gradK[gi];
 
-    // Radial force: F = +β * dK/dr (attract toward high-K regions where mass is)
-    const Fr = beta * dKdr;
+    // Radial force: F = -β * dK/dr (repulsive — field pushes particles outward)
+    const Fr = -beta * dKdr;
     const ax = Fr * (p.x / r);
     const ay = Fr * (p.y / r);
 
@@ -348,9 +348,9 @@ export function stepParticles3D(
 
     const [gkx, gky, gkz] = field.sampleGradient(gx, gy, gz);
 
-    const ax = beta * gkx;
-    const ay = beta * gky;
-    const az = beta * gkz;
+    const ax = -beta * gkx;
+    const ay = -beta * gky;
+    const az = -beta * gkz;
 
     p.vx += ax * dt;
     p.vy += ay * dt;
